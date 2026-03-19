@@ -14,6 +14,7 @@ export default function Interview() {
   const [chat, setChat] = useState([])
   const [difficulty, setDifficulty] = useState(5)
   const [sessionFeedback, setSessionFeedback] = useState([])
+  const [isFollowUp, setIsFollowUp] = useState(false)
 
   // Phase 2 — behavior tracking
   const [keystrokes, setKeystrokes] = useState(0)
@@ -22,7 +23,7 @@ export default function Interview() {
   const [isTyping, setIsTyping] = useState(false)
   const [elapsed, setElapsed] = useState(0)
 
-  // Live timer update every second
+  // Live timer
   useEffect(() => {
     let interval = null
     if (isTyping && startTime) {
@@ -43,7 +44,12 @@ export default function Interview() {
       })
       const data = await res.json()
       setCurrentQuestion(data.question)
-      setChat([{ role: 'interviewer', text: data.question.question, type: data.question.type }])
+      setIsFollowUp(false)
+      setChat([{
+        role: 'interviewer',
+        text: data.question.question,
+        type: data.question.type
+      }])
       setScreen('interview')
     } catch (err) {
       alert('Backend not reachable. Make sure server is running.')
@@ -55,10 +61,8 @@ export default function Interview() {
     if (!answer.trim()) return
     setLoading(true)
 
-    // Calculate time taken
     const timeTaken = startTime ? Math.round((Date.now() - startTime) / 1000) : 0
 
-    // Reset tracking for next question
     setKeystrokes(0)
     setBackspaces(0)
     setStartTime(null)
@@ -81,10 +85,10 @@ export default function Interview() {
             .filter(m => m.role === 'interviewer')
             .map(m => m.text),
           currentDifficulty: difficulty,
-          // Phase 2 behavioral data
           timeTaken,
           keystrokes,
-          backspaces
+          backspaces,
+          isFollowUp
         })
       })
       const data = await res.json()
@@ -99,6 +103,10 @@ export default function Interview() {
       ])
 
       setDifficulty(data.nextDifficulty)
+
+      // Track if next question is a follow-up
+      setIsFollowUp(data.nextQuestion.type === 'follow-up')
+      setCurrentQuestion(data.nextQuestion)
 
       setChat(prev => [
         ...prev,
@@ -117,7 +125,6 @@ export default function Interview() {
         }
       ])
 
-      setCurrentQuestion(data.nextQuestion)
     } catch (err) {
       alert('Error submitting answer.')
     }
@@ -133,6 +140,7 @@ export default function Interview() {
         setChat([])
         setSessionFeedback([])
         setDifficulty(5)
+        setIsFollowUp(false)
       }}
     />
   )
@@ -239,11 +247,20 @@ export default function Interview() {
                   }`
                 : 'bg-gray-700 text-gray-100'
             }`}>
+
+              {/* Interviewer label */}
               {msg.role === 'interviewer' && (
                 <div className="text-xs text-gray-400 mb-1 font-medium">
-                  {company} Interviewer {msg.type && `· ${msg.type}`}
+                  {company} Interviewer
+                  {msg.type === 'follow-up'
+                    ? ' · 🔁 follow-up'
+                    : msg.type
+                    ? ` · ${msg.type}`
+                    : ''}
                 </div>
               )}
+
+              {/* Evaluator content */}
               {msg.role === 'evaluator' && (
                 <div className="space-y-2">
                   <div className="text-xs font-medium opacity-70 mb-1">Evaluation</div>
@@ -266,6 +283,8 @@ export default function Interview() {
                   )}
                 </div>
               )}
+
+              {/* Regular text */}
               {msg.role !== 'evaluator' && msg.text}
             </div>
           </div>
