@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Feedback from './Feedback'
 
 const COMPANIES = ['Google', 'Amazon', 'Microsoft']
@@ -14,6 +14,24 @@ export default function Interview() {
   const [chat, setChat] = useState([])
   const [difficulty, setDifficulty] = useState(5)
   const [sessionFeedback, setSessionFeedback] = useState([])
+
+  // Phase 2 — behavior tracking
+  const [keystrokes, setKeystrokes] = useState(0)
+  const [backspaces, setBackspaces] = useState(0)
+  const [startTime, setStartTime] = useState(null)
+  const [isTyping, setIsTyping] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+
+  // Live timer update every second
+  useEffect(() => {
+    let interval = null
+    if (isTyping && startTime) {
+      interval = setInterval(() => {
+        setElapsed(Math.round((Date.now() - startTime) / 1000))
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [isTyping, startTime])
 
   const startInterview = async () => {
     setLoading(true)
@@ -37,6 +55,16 @@ export default function Interview() {
     if (!answer.trim()) return
     setLoading(true)
 
+    // Calculate time taken
+    const timeTaken = startTime ? Math.round((Date.now() - startTime) / 1000) : 0
+
+    // Reset tracking for next question
+    setKeystrokes(0)
+    setBackspaces(0)
+    setStartTime(null)
+    setIsTyping(false)
+    setElapsed(0)
+
     const updatedChat = [...chat, { role: 'candidate', text: answer }]
     setChat(updatedChat)
     setAnswer('')
@@ -52,7 +80,11 @@ export default function Interview() {
           previousQuestions: chat
             .filter(m => m.role === 'interviewer')
             .map(m => m.text),
-          currentDifficulty: difficulty
+          currentDifficulty: difficulty,
+          // Phase 2 behavioral data
+          timeTaken,
+          keystrokes,
+          backspaces
         })
       })
       const data = await res.json()
@@ -72,8 +104,11 @@ export default function Interview() {
         ...prev,
         {
           role: 'evaluator',
-          text: `Score: ${data.evaluation.score}/10 — ${data.evaluation.improvement}`,
-          score: data.evaluation.score
+          text: data.evaluation.feedback,
+          score: data.evaluation.score,
+          confidence: data.evaluation.confidence_level,
+          behavior: data.evaluation.behavior_analysis,
+          tip: data.evaluation.improvement_tip
         },
         {
           role: 'interviewer',
@@ -210,11 +245,28 @@ export default function Interview() {
                 </div>
               )}
               {msg.role === 'evaluator' && (
-                <div className="text-xs mb-1 font-medium opacity-70">
-                  Evaluation
+                <div className="space-y-2">
+                  <div className="text-xs font-medium opacity-70 mb-1">Evaluation</div>
+                  <div>📊 Score: <span className="font-bold">{msg.score}/10</span></div>
+                  <div>💬 {msg.text}</div>
+                  {msg.confidence && (
+                    <div className={`text-xs font-semibold mt-1 ${
+                      msg.confidence === 'High' ? 'text-green-300' :
+                      msg.confidence === 'Medium' ? 'text-yellow-300' :
+                      'text-red-300'
+                    }`}>
+                      🧠 Confidence: {msg.confidence}
+                    </div>
+                  )}
+                  {msg.behavior && (
+                    <div className="text-xs opacity-80">🔍 {msg.behavior}</div>
+                  )}
+                  {msg.tip && (
+                    <div className="text-xs opacity-80">💡 Tip: {msg.tip}</div>
+                  )}
                 </div>
               )}
-              {msg.text}
+              {msg.role !== 'evaluator' && msg.text}
             </div>
           </div>
         ))}
@@ -236,6 +288,14 @@ export default function Interview() {
             onChange={e => setAnswer(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && e.ctrlKey) submitAnswer()
+              if (!isTyping) {
+                setIsTyping(true)
+                setStartTime(Date.now())
+              }
+              if (e.key === 'Backspace') {
+                setBackspaces(prev => prev + 1)
+              }
+              setKeystrokes(prev => prev + 1)
             }}
             placeholder="Type your answer... (Ctrl+Enter to submit)"
             rows={3}
@@ -249,9 +309,13 @@ export default function Interview() {
             {loading ? '...' : 'Send'}
           </button>
         </div>
-        <p className="text-center text-gray-600 text-xs mt-2">
-          Ctrl+Enter to submit
-        </p>
+
+        {/* Live behavior tracker */}
+        <div className="flex justify-center gap-6 mt-2 text-xs text-gray-500">
+          <span>⌨️ Keystrokes: {keystrokes}</span>
+          <span>⌫ Backspaces: {backspaces}</span>
+          <span>⏱️ Time: {elapsed}s</span>
+        </div>
       </div>
 
     </div>
